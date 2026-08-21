@@ -1,26 +1,19 @@
-import enum
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, String, func
+from sqlalchemy import DateTime, ForeignKey, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
 if TYPE_CHECKING:
-    from app.models.exam import Exam
+    from app.models.question import Question
+    from app.models.user import User
 
-
-class UserRole(str, enum.Enum):
-    LEARNER = "learner"
-    INSTRUCTOR = "instructor"
-    ADMIN = "admin"
-
-
-class User(Base):
-    __tablename__ = "users"
+class Exam(Base):
+    __tablename__ = "exams"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -28,23 +21,20 @@ class User(Base):
         default=uuid.uuid4,
     )
 
-    name: Mapped[str] = mapped_column(String(100), nullable=False)
-
-    email: Mapped[str] = mapped_column(
+    title: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
-        unique=True,
-        index=True,
     )
 
-    role: Mapped[UserRole] = mapped_column(
-        Enum(
-            UserRole,
-            name="user_role",
-            values_callable=lambda enum_class: [member.value for member in enum_class],
-        ),
+    description: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    created_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
         nullable=False,
-        default=UserRole.LEARNER,
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -60,7 +50,13 @@ class User(Base):
         onupdate=func.now(),
     )
 
-    exams_created: Mapped[list["Exam"]] = relationship(
-        "Exam",
-        back_populates="creator",
+    creator: Mapped["User"] = relationship(
+        "User",
+        back_populates="exams_created",
+    )
+
+    questions: Mapped[list["Question"]] = relationship(
+        "Question",
+        back_populates="exam",
+        cascade="all, delete-orphan",
     )
