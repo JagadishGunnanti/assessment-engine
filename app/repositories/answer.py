@@ -57,11 +57,15 @@ class AnswerRepository:
         answer: Answer,
         option_ids: list[UUID],
     ) -> Answer:
-        answer.options.clear()
+        for option in list(answer.options):
+            self.db.delete(option)
+
+        self.db.flush()
 
         for option_id in option_ids:
-            answer.options.append(
+            self.db.add(
                 AnswerOption(
+                    answer_id=answer.id,
                     question_option_id=option_id,
                 )
             )
