@@ -9,6 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.exam_attempt import ExamAttempt
     from app.models.question import Question
     from app.models.user import User
 
@@ -19,6 +20,12 @@ class Exam(Base):
         UUID(as_uuid=True),
         primary_key=True,
         default=uuid.uuid4,
+    )
+
+    attempts: Mapped[list["ExamAttempt"]] = relationship(
+        "ExamAttempt",
+        back_populates="exam",
+        cascade="all, delete-orphan",
     )
 
     title: Mapped[str] = mapped_column(

@@ -11,6 +11,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.exam import Exam
+    from app.models.exam_attempt import ExamAttempt
 
 
 class UserRole(str, enum.Enum):
@@ -26,6 +27,12 @@ class User(Base):
         UUID(as_uuid=True),
         primary_key=True,
         default=uuid.uuid4,
+    )
+
+    exam_attempts: Mapped[list["ExamAttempt"]] = relationship(
+        "ExamAttempt",
+        back_populates="learner",
+        cascade="all, delete-orphan",
     )
 
     name: Mapped[str] = mapped_column(String(100), nullable=False)
