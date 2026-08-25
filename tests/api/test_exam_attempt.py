@@ -419,3 +419,430 @@ def test_submit_answer_rejects_duplicate_options() -> None:
         db.delete(learner)
         db.commit()
         db.close()
+
+def test_submit_exam() -> None:
+    db = SessionLocal()
+
+    learner = User(
+        name="Test Learner",
+        email=f"learner-{uuid.uuid4()}@example.com",
+    )
+    db.add(learner)
+    db.flush()
+
+    exam = Exam(
+        title="Submit Test Exam",
+        created_by=learner.id,
+    )
+    db.add(exam)
+    db.commit()
+
+    try:
+        start_response = client.post(
+            f"/api/v1/exams/{exam.id}/start",
+            json={"learner_id": str(learner.id)},
+        )
+
+        assert start_response.status_code == 201
+
+        attempt_id = start_response.json()["id"]
+
+        response = client.post(
+            f"/api/v1/attempts/{attempt_id}/submit",
+        )
+
+        assert response.status_code == 200
+
+        data = response.json()
+
+        assert data["id"] == attempt_id
+        assert data["exam_id"] == str(exam.id)
+        assert data["learner_id"] == str(learner.id)
+        assert data["status"] == "submitted"
+        assert data["submitted_at"] is not None
+
+    finally:
+        db.delete(exam)
+        db.delete(learner)
+        db.commit()
+        db.close()
+
+def test_submit_exam_rejects_second_submission() -> None:
+    db = SessionLocal()
+
+    learner = User(
+        name="Test Learner",
+        email=f"learner-{uuid.uuid4()}@example.com",
+    )
+    db.add(learner)
+    db.flush()
+
+    exam = Exam(
+        title="Double Submit Test",
+        created_by=learner.id,
+    )
+    db.add(exam)
+    db.commit()
+
+    try:
+        start_response = client.post(
+            f"/api/v1/exams/{exam.id}/start",
+            json={"learner_id": str(learner.id)},
+        )
+
+        assert start_response.status_code == 201
+
+        attempt_id = start_response.json()["id"]
+
+        first_response = client.post(
+            f"/api/v1/attempts/{attempt_id}/submit",
+        )
+
+        assert first_response.status_code == 200
+
+        second_response = client.post(
+            f"/api/v1/attempts/{attempt_id}/submit",
+        )
+
+        assert second_response.status_code == 409
+        assert second_response.json()["detail"] == (
+            "Exam attempt has already been submitted"
+        )
+
+    finally:
+        db.delete(exam)
+        db.delete(learner)
+        db.commit()
+        db.close()
+
+def test_submit_exam_calculates_score_for_correct_msq() -> None:
+    db = SessionLocal()
+
+    learner = User(
+        name="Test Learner",
+        email=f"learner-{uuid.uuid4()}@example.com",
+    )
+    db.add(learner)
+    db.flush()
+
+    exam = Exam(
+        title="MSQ Scoring Test",
+        created_by=learner.id,
+    )
+    db.add(exam)
+    db.flush()
+
+    question = Question(
+        exam_id=exam.id,
+        text="Which are AWS compute services?",
+        order=1,
+    )
+    db.add(question)
+    db.flush()
+
+    options = [
+        QuestionOption(
+            question_id=question.id,
+            text="EC2",
+            order=1,
+            is_correct=True,
+        ),
+        QuestionOption(
+            question_id=question.id,
+            text="S3",
+            order=2,
+            is_correct=False,
+        ),
+        QuestionOption(
+            question_id=question.id,
+            text="Lambda",
+            order=3,
+            is_correct=True,
+        ),
+        QuestionOption(
+            question_id=question.id,
+            text="RDS",
+            order=4,
+            is_correct=False,
+        ),
+    ]
+
+    db.add_all(options)
+    db.commit()
+
+    try:
+        start_response = client.post(
+            f"/api/v1/exams/{exam.id}/start",
+            json={"learner_id": str(learner.id)},
+        )
+
+        assert start_response.status_code == 201
+
+        attempt_id = start_response.json()["id"]
+
+        answer_response = client.post(
+            f"/api/v1/attempts/{attempt_id}/answers",
+            json={
+                "question_id": str(question.id),
+                "selected_option_ids": [
+                    str(options[0].id),
+                    str(options[2].id),
+                ],
+            },
+        )
+
+        assert answer_response.status_code == 200
+
+        submit_response = client.post(
+            f"/api/v1/attempts/{attempt_id}/submit",
+        )
+
+        assert submit_response.status_code == 200
+
+        data = submit_response.json()
+
+        assert data["status"] == "submitted"
+        assert data["score"] == 1
+
+    finally:
+        db.delete(exam)
+        db.delete(learner)
+        db.commit()
+        db.close()
+
+def test_submit_exam_calculates_zero_for_incorrect_msq() -> None:
+    db = SessionLocal()
+
+    learner = User(
+        name="Test Learner",
+        email=f"learner-{uuid.uuid4()}@example.com",
+    )
+    db.add(learner)
+    db.flush()
+
+    exam = Exam(
+        title="Incorrect MSQ Scoring Test",
+        created_by=learner.id,
+    )
+    db.add(exam)
+    db.flush()
+
+    question = Question(
+        exam_id=exam.id,
+        text="Which are AWS compute services?",
+        order=1,
+    )
+    db.add(question)
+    db.flush()
+
+    options = [
+        QuestionOption(
+            question_id=question.id,
+            text="EC2",
+            order=1,
+            is_correct=True,
+        ),
+        QuestionOption(
+            question_id=question.id,
+            text="S3",
+            order=2,
+            is_correct=False,
+        ),
+        QuestionOption(
+            question_id=question.id,
+            text="Lambda",
+            order=3,
+            is_correct=True,
+        ),
+    ]
+
+    db.add_all(options)
+    db.commit()
+
+    try:
+        start_response = client.post(
+            f"/api/v1/exams/{exam.id}/start",
+            json={"learner_id": str(learner.id)},
+        )
+
+        assert start_response.status_code == 201
+
+        attempt_id = start_response.json()["id"]
+
+        # EC2 + S3 is incorrect because Lambda is also required.
+        answer_response = client.post(
+            f"/api/v1/attempts/{attempt_id}/answers",
+            json={
+                "question_id": str(question.id),
+                "selected_option_ids": [
+                    str(options[0].id),
+                    str(options[1].id),
+                ],
+            },
+        )
+
+        assert answer_response.status_code == 200
+
+        submit_response = client.post(
+            f"/api/v1/attempts/{attempt_id}/submit",
+        )
+
+        assert submit_response.status_code == 200
+
+        data = submit_response.json()
+
+        assert data["status"] == "submitted"
+        assert data["score"] == 0
+
+    finally:
+        db.delete(exam)
+        db.delete(learner)
+        db.commit()
+        db.close()
+
+def test_submit_exam_calculates_score_for_multiple_questions() -> None:
+    db = SessionLocal()
+
+    learner = User(
+        name="Test Learner",
+        email=f"learner-{uuid.uuid4()}@example.com",
+    )
+    db.add(learner)
+    db.flush()
+
+    exam = Exam(
+        title="Multiple Question Scoring Test",
+        created_by=learner.id,
+    )
+    db.add(exam)
+    db.flush()
+
+    question_one = Question(
+        exam_id=exam.id,
+        text="Which are AWS compute services?",
+        order=1,
+    )
+    question_two = Question(
+        exam_id=exam.id,
+        text="Which are AWS storage services?",
+        order=2,
+    )
+    question_three = Question(
+        exam_id=exam.id,
+        text="Which are AWS database services?",
+        order=3,
+    )
+
+    db.add_all([question_one, question_two, question_three])
+    db.flush()
+
+    options = [
+        # Question 1: EC2 + Lambda are correct.
+        QuestionOption(
+            question_id=question_one.id,
+            text="EC2",
+            order=1,
+            is_correct=True,
+        ),
+        QuestionOption(
+            question_id=question_one.id,
+            text="S3",
+            order=2,
+            is_correct=False,
+        ),
+        QuestionOption(
+            question_id=question_one.id,
+            text="Lambda",
+            order=3,
+            is_correct=True,
+        ),
+        # Question 2: S3 is correct.
+        QuestionOption(
+            question_id=question_two.id,
+            text="S3",
+            order=1,
+            is_correct=True,
+        ),
+        QuestionOption(
+            question_id=question_two.id,
+            text="EC2",
+            order=2,
+            is_correct=False,
+        ),
+        # Question 3: RDS is correct.
+        QuestionOption(
+            question_id=question_three.id,
+            text="RDS",
+            order=1,
+            is_correct=True,
+        ),
+        QuestionOption(
+            question_id=question_three.id,
+            text="Lambda",
+            order=2,
+            is_correct=False,
+        ),
+    ]
+
+    db.add_all(options)
+    db.commit()
+
+    try:
+        start_response = client.post(
+            f"/api/v1/exams/{exam.id}/start",
+            json={"learner_id": str(learner.id)},
+        )
+
+        assert start_response.status_code == 201
+
+        attempt_id = start_response.json()["id"]
+
+        # Question 1: correct → +1.
+        response = client.post(
+            f"/api/v1/attempts/{attempt_id}/answers",
+            json={
+                "question_id": str(question_one.id),
+                "selected_option_ids": [
+                    str(options[0].id),
+                    str(options[2].id),
+                ],
+            },
+        )
+        assert response.status_code == 200
+
+        # Question 2: incorrect → +0.
+        response = client.post(
+            f"/api/v1/attempts/{attempt_id}/answers",
+            json={
+                "question_id": str(question_two.id),
+                "selected_option_ids": [str(options[4].id)],
+            },
+        )
+        assert response.status_code == 200
+
+        # Question 3: correct → +1.
+        response = client.post(
+            f"/api/v1/attempts/{attempt_id}/answers",
+            json={
+                "question_id": str(question_three.id),
+                "selected_option_ids": [str(options[5].id)],
+            },
+        )
+        assert response.status_code == 200
+
+        submit_response = client.post(
+            f"/api/v1/attempts/{attempt_id}/submit",
+        )
+
+        assert submit_response.status_code == 200
+
+        data = submit_response.json()
+
+        assert data["status"] == "submitted"
+        assert data["score"] == 2
+
+    finally:
+        db.delete(exam)
+        db.delete(learner)
+        db.commit()
+        db.close()

@@ -18,3 +18,5 @@ class ExamAttemptResponse(BaseModel):
     learner_id: UUID
     status: AttemptStatus
     started_at: datetime
+    submitted_at: datetime | None = None
+    score: int | None = None

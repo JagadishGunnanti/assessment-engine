@@ -1,10 +1,13 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.exam import Exam
-from app.models.exam_attempt import ExamAttempt
+from app.models.exam_attempt import AttemptStatus, ExamAttempt
+from app.models.question_option import QuestionOption
 from app.models.user import User
 from app.repositories.exam_attempt import ExamAttemptRepository
 
@@ -45,3 +48,53 @@ class ExamAttemptService:
         self.db.refresh(attempt)
 
         return attempt
+
+    def submit_exam(
+        self,
+        *,
+        attempt_id: UUID,
+    ) -> ExamAttempt:
+        attempt = self.db.get(ExamAttempt, attempt_id)
+
+        if attempt is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Exam attempt not found",
+            )
+
+        if attempt.status != AttemptStatus.IN_PROGRESS:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Exam attempt has already been submitted",
+            )
+
+        attempt.score = self._calculate_score(attempt)
+        attempt.status = AttemptStatus.SUBMITTED
+        attempt.submitted_at = datetime.now(UTC)
+
+        self.db.commit()
+        self.db.refresh(attempt)
+
+        return attempt
+
+    def _calculate_score(self, attempt: ExamAttempt) -> int:
+        score = 0
+
+        for answer in attempt.answers:
+            correct_option_ids = set(
+                self.db.scalars(
+                    select(QuestionOption.id).where(
+                        QuestionOption.question_id == answer.question_id,
+                        QuestionOption.is_correct.is_(True),
+                    )
+                ).all()
+            )
+
+            selected_option_ids = {
+                option.question_option_id for option in answer.options
+            }
+
+            if selected_option_ids == correct_option_ids:
+                score += 1
+
+        return score

@@ -5,7 +5,9 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.schemas.answer import SubmitAnswerRequest
+from app.schemas.attempt import ExamAttemptResponse
 from app.services.answer import AnswerService
+from app.services.exam_attempt import ExamAttemptService
 
 router = APIRouter(prefix="/attempts", tags=["attempts"])
 
@@ -32,3 +34,17 @@ def submit_answer(
             option.question_option_id for option in answer.options
         ],
     }
+
+@router.post(
+    "/{attempt_id}/submit",
+    response_model=ExamAttemptResponse,
+)
+def submit_exam(
+    attempt_id: UUID,
+    db: Session = Depends(get_db),
+) -> ExamAttemptResponse:
+    service = ExamAttemptService(db)
+
+    return service.submit_exam(
+        attempt_id=attempt_id,
+    )
