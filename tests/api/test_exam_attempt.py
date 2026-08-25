@@ -846,3 +846,171 @@ def test_submit_exam_calculates_score_for_multiple_questions() -> None:
         db.delete(learner)
         db.commit()
         db.close()
+
+def test_create_question_with_options() -> None:
+    db = SessionLocal()
+
+    creator = User(
+        name="Test Instructor",
+        email=f"instructor-{uuid.uuid4()}@example.com",
+    )
+    db.add(creator)
+    db.flush()
+
+    exam = Exam(
+        title="Question Creation Test",
+        created_by=creator.id,
+    )
+    db.add(exam)
+    db.commit()
+
+    try:
+        response = client.post(
+            f"/api/v1/exams/{exam.id}/questions",
+            json={
+                "text": "Which are AWS compute services?",
+                "order": 1,
+                "options": [
+                    {
+                        "text": "EC2",
+                        "order": 1,
+                        "is_correct": True,
+                    },
+                    {
+                        "text": "S3",
+                        "order": 2,
+                        "is_correct": False,
+                    },
+                    {
+                        "text": "Lambda",
+                        "order": 3,
+                        "is_correct": True,
+                    },
+                ],
+            },
+        )
+
+        assert response.status_code == 201
+
+        data = response.json()
+
+        assert data["exam_id"] == str(exam.id)
+        assert data["text"] == "Which are AWS compute services?"
+        assert data["order"] == 1
+        assert len(data["options"]) == 3
+
+        assert data["options"][0]["text"] == "EC2"
+        assert data["options"][0]["is_correct"] is True
+
+        assert data["options"][1]["text"] == "S3"
+        assert data["options"][1]["is_correct"] is False
+
+        assert data["options"][2]["text"] == "Lambda"
+        assert data["options"][2]["is_correct"] is True
+
+    finally:
+        db.delete(exam)
+        db.delete(creator)
+        db.commit()
+        db.close()
+
+def test_create_question_rejects_nonexistent_exam() -> None:
+    db = SessionLocal()
+
+    try:
+        response = client.post(
+            f"/api/v1/exams/{uuid.uuid4()}/questions",
+            json={
+                "text": "This exam does not exist",
+                "order": 1,
+                "options": [
+                    {
+                        "text": "Option A",
+                        "order": 1,
+                        "is_correct": True,
+                    },
+                    {
+                        "text": "Option B",
+                        "order": 2,
+                        "is_correct": False,
+                    },
+                ],
+            },
+        )
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Exam not found"
+
+    finally:
+        db.close()
+
+def test_create_question_rejects_duplicate_order() -> None:
+    db = SessionLocal()
+
+    creator = User(
+        name="Test Instructor",
+        email=f"instructor-{uuid.uuid4()}@example.com",
+    )
+    db.add(creator)
+    db.flush()
+
+    exam = Exam(
+        title="Duplicate Order Test",
+        created_by=creator.id,
+    )
+    db.add(exam)
+    db.commit()
+
+    try:
+        first_response = client.post(
+            f"/api/v1/exams/{exam.id}/questions",
+            json={
+                "text": "First question",
+                "order": 1,
+                "options": [
+                    {
+                        "text": "Yes",
+                        "order": 1,
+                        "is_correct": True,
+                    },
+                    {
+                        "text": "No",
+                        "order": 2,
+                        "is_correct": False,
+                    },
+                ],
+            },
+        )
+
+        assert first_response.status_code == 201
+
+        second_response = client.post(
+            f"/api/v1/exams/{exam.id}/questions",
+            json={
+                "text": "Duplicate order question",
+                "order": 1,
+                "options": [
+                    {
+                        "text": "A",
+                        "order": 1,
+                        "is_correct": True,
+                    },
+                    {
+                        "text": "B",
+                        "order": 2,
+                        "is_correct": False,
+                    },
+                ],
+            },
+        )
+
+        assert second_response.status_code == 409
+        assert second_response.json()["detail"] == (
+            "Question order already exists for this exam"
+        )
+
+    finally:
+        db.delete(exam)
+        db.delete(creator)
+        db.commit()
+        db.close()
