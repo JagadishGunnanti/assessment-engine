@@ -247,16 +247,3 @@ Current status:
 20 tests passed
 Ruff checks passed
 ```
-
-## Future Improvements
-
-- Authentication and authorization
-- Instructor and learner roles
-- Exam timers and automatic submission
-- Attempt limits
-- Exam scheduling
-- Redis caching
-- Rate limiting
-- CI/CD pipeline
-- AWS deployment
-- Monitoring and observability
