@@ -52,4 +52,10 @@ class QuestionService:
                     detail="Question order already exists for this exam",
                 ) from exc
 
+            if "uq_question_options_question_order" in str(exc.orig):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Option order already exists for this question",
+                ) from exc
+
             raise

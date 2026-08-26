@@ -1,8 +1,10 @@
 from uuid import UUID
 
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.orm import Session, selectinload
 
 from app.models.exam import Exam
+from app.models.question import Question
 
 
 class ExamRepository:
@@ -26,3 +28,18 @@ class ExamRepository:
         self.db.flush()
 
         return exam
+
+    def get_with_questions(
+        self,
+        *,
+        exam_id: UUID,
+    ) -> Exam | None:
+        return self.db.scalar(
+            select(Exam)
+            .where(Exam.id == exam_id)
+            .options(
+                selectinload(Exam.questions).selectinload(
+                    Question.options,
+                ),
+            )
+        )

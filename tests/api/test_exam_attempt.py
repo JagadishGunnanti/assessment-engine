@@ -1014,3 +1014,244 @@ def test_create_question_rejects_duplicate_order() -> None:
         db.delete(creator)
         db.commit()
         db.close()
+
+def test_create_question_rejects_duplicate_option_order() -> None:
+    db = SessionLocal()
+
+    creator = User(
+        name="Test Instructor",
+        email=f"instructor-{uuid.uuid4()}@example.com",
+    )
+    db.add(creator)
+    db.flush()
+
+    exam = Exam(
+        title="Duplicate Option Order Test",
+        created_by=creator.id,
+    )
+    db.add(exam)
+    db.commit()
+
+    try:
+        response = client.post(
+            f"/api/v1/exams/{exam.id}/questions",
+            json={
+                "text": "Question with duplicate option order",
+                "order": 1,
+                "options": [
+                    {
+                        "text": "Option A",
+                        "order": 1,
+                        "is_correct": True,
+                    },
+                    {
+                        "text": "Option B",
+                        "order": 1,
+                        "is_correct": False,
+                    },
+                ],
+            },
+        )
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == (
+            "Option order already exists for this question"
+        )
+
+    finally:
+        db.delete(exam)
+        db.delete(creator)
+        db.commit()
+        db.close()
+
+def test_get_exam_returns_questions_without_correct_answers() -> None:
+    db = SessionLocal()
+
+    creator = User(
+        name="Test Instructor",
+        email=f"instructor-{uuid.uuid4()}@example.com",
+    )
+    db.add(creator)
+    db.flush()
+
+    exam = Exam(
+        title="Get Exam Test",
+        description="Exam retrieval test",
+        created_by=creator.id,
+    )
+    db.add(exam)
+    db.flush()
+
+    question = Question(
+        exam_id=exam.id,
+        text="Which are AWS compute services?",
+        order=1,
+    )
+    db.add(question)
+    db.flush()
+
+    options = [
+        QuestionOption(
+            question_id=question.id,
+            text="EC2",
+            order=1,
+            is_correct=True,
+        ),
+        QuestionOption(
+            question_id=question.id,
+            text="S3",
+            order=2,
+            is_correct=False,
+        ),
+        QuestionOption(
+            question_id=question.id,
+            text="Lambda",
+            order=3,
+            is_correct=True,
+        ),
+    ]
+
+    db.add_all(options)
+    db.commit()
+
+    try:
+        response = client.get(f"/api/v1/exams/{exam.id}")
+
+        assert response.status_code == 200
+
+        data = response.json()
+
+        assert data["id"] == str(exam.id)
+        assert data["title"] == "Get Exam Test"
+        assert data["description"] == "Exam retrieval test"
+        assert data["created_by"] == str(creator.id)
+
+        assert len(data["questions"]) == 1
+
+        returned_question = data["questions"][0]
+
+        assert returned_question["id"] == str(question.id)
+        assert returned_question["text"] == "Which are AWS compute services?"
+        assert returned_question["order"] == 1
+
+        assert len(returned_question["options"]) == 3
+
+        for option in returned_question["options"]:
+            assert "is_correct" not in option
+
+    finally:
+        db.delete(exam)
+        db.delete(creator)
+        db.commit()
+        db.close()
+
+def test_get_exam_rejects_nonexistent_exam() -> None:
+    response = client.get(f"/api/v1/exams/{uuid.uuid4()}")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Exam not found"
+
+def test_get_result_for_submitted_exam() -> None:
+    db = SessionLocal()
+
+    learner = User(
+        name="Test Learner",
+        email=f"learner-{uuid.uuid4()}@example.com",
+    )
+    db.add(learner)
+    db.flush()
+
+    exam = Exam(
+        title="Result Test Exam",
+        created_by=learner.id,
+    )
+    db.add(exam)
+    db.commit()
+
+    try:
+        start_response = client.post(
+            f"/api/v1/exams/{exam.id}/start",
+            json={"learner_id": str(learner.id)},
+        )
+
+        assert start_response.status_code == 201
+
+        attempt_id = start_response.json()["id"]
+
+        submit_response = client.post(
+            f"/api/v1/attempts/{attempt_id}/submit",
+        )
+
+        assert submit_response.status_code == 200
+
+        response = client.get(
+            f"/api/v1/attempts/{attempt_id}/result",
+        )
+
+        assert response.status_code == 200
+
+        data = response.json()
+
+        assert data["id"] == attempt_id
+        assert data["exam_id"] == str(exam.id)
+        assert data["learner_id"] == str(learner.id)
+        assert data["status"] == "submitted"
+        assert data["score"] == 0
+        assert data["total_questions"] == 0
+        assert data["submitted_at"] is not None
+
+    finally:
+        db.delete(exam)
+        db.delete(learner)
+        db.commit()
+        db.close()
+
+def test_get_result_rejects_in_progress_attempt() -> None:
+    db = SessionLocal()
+
+    learner = User(
+        name="Test Learner",
+        email=f"learner-{uuid.uuid4()}@example.com",
+    )
+    db.add(learner)
+    db.flush()
+
+    exam = Exam(
+        title="In Progress Result Test",
+        created_by=learner.id,
+    )
+    db.add(exam)
+    db.commit()
+
+    try:
+        start_response = client.post(
+            f"/api/v1/exams/{exam.id}/start",
+            json={"learner_id": str(learner.id)},
+        )
+
+        assert start_response.status_code == 201
+
+        attempt_id = start_response.json()["id"]
+
+        response = client.get(
+            f"/api/v1/attempts/{attempt_id}/result",
+        )
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == (
+            "Exam attempt has not been submitted"
+        )
+
+    finally:
+        db.delete(exam)
+        db.delete(learner)
+        db.commit()
+        db.close()
+
+def test_get_result_rejects_nonexistent_attempt() -> None:
+    response = client.get(
+        f"/api/v1/attempts/{uuid.uuid4()}/result",
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Exam attempt not found"

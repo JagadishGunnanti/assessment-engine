@@ -2,11 +2,12 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.exam import Exam
 from app.models.exam_attempt import AttemptStatus, ExamAttempt
+from app.models.question import Question
 from app.models.question_option import QuestionOption
 from app.models.user import User
 from app.repositories.exam_attempt import ExamAttemptRepository
@@ -98,3 +99,30 @@ class ExamAttemptService:
                 score += 1
 
         return score
+
+    def get_result(
+        self,
+        *,
+        attempt_id: UUID,
+    ) -> tuple[ExamAttempt, int]:
+        attempt = self.db.get(ExamAttempt, attempt_id)
+
+        if attempt is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Exam attempt not found",
+            )
+
+        if attempt.status != AttemptStatus.SUBMITTED:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Exam attempt has not been submitted",
+            )
+
+        total_questions = self.db.scalar(
+            select(func.count(Question.id)).where(
+                Question.exam_id == attempt.exam_id,
+            )
+        )
+
+        return attempt, total_questions or 0

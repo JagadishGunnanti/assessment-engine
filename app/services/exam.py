@@ -38,3 +38,20 @@ class ExamService:
         self.db.refresh(exam)
 
         return exam
+
+    def get_exam(
+        self,
+        *,
+        exam_id: UUID,
+    ) -> Exam:
+        exam = self.repository.get_with_questions(
+            exam_id=exam_id,
+        )
+
+        if exam is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Exam not found",
+            )
+
+        return exam

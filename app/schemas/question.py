@@ -32,3 +32,20 @@ class QuestionResponse(BaseModel):
     text: str
     order: int
     options: list[QuestionOptionResponse]
+
+
+class ExamQuestionOptionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    text: str
+    order: int
+
+
+class ExamQuestionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    text: str
+    order: int
+    options: list[ExamQuestionOptionResponse]

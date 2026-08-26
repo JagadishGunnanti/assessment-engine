@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.schemas.answer import SubmitAnswerRequest
-from app.schemas.attempt import ExamAttemptResponse
+from app.schemas.attempt import ExamAttemptResponse, ExamResultResponse
 from app.services.answer import AnswerService
 from app.services.exam_attempt import ExamAttemptService
 
@@ -47,4 +47,29 @@ def submit_exam(
 
     return service.submit_exam(
         attempt_id=attempt_id,
+    )
+
+@router.get(
+    "/{attempt_id}/result",
+    response_model=ExamResultResponse,
+)
+def get_result(
+    attempt_id: UUID,
+    db: Session = Depends(get_db),
+) -> ExamResultResponse:
+    service = ExamAttemptService(db)
+
+    attempt, total_questions = service.get_result(
+        attempt_id=attempt_id,
+    )
+
+    return ExamResultResponse(
+        id=attempt.id,
+        exam_id=attempt.exam_id,
+        learner_id=attempt.learner_id,
+        status=attempt.status,
+        started_at=attempt.started_at,
+        submitted_at=attempt.submitted_at,
+        score=attempt.score,
+        total_questions=total_questions,
     )

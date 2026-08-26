@@ -5,7 +5,11 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.schemas.attempt import ExamAttemptResponse, StartExamRequest
-from app.schemas.exam import CreateExamRequest, ExamResponse
+from app.schemas.exam import (
+    CreateExamRequest,
+    ExamDetailResponse,
+    ExamResponse,
+)
 from app.schemas.question import CreateQuestionRequest, QuestionResponse
 from app.services.exam import ExamService
 from app.services.exam_attempt import ExamAttemptService
@@ -31,6 +35,17 @@ def create_exam(
         created_by=request.created_by,
     )
 
+@router.get(
+    "/{exam_id}",
+    response_model=ExamDetailResponse,
+)
+def get_exam(
+    exam_id: UUID,
+    db: Session = Depends(get_db),
+) -> ExamDetailResponse:
+    service = ExamService(db)
+
+    return service.get_exam(exam_id=exam_id)
 
 @router.post(
     "/{exam_id}/start",
